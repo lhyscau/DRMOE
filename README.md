@@ -1,14 +1,10 @@
 # DRMOE: Towards Better Mixture of Experts via Dual Routing Strategy
 
-------
-
 This is  the implementation of the paper "DRMOE: Towards Better Mixture of Experts via Dual Routing Strategy".
 
 
 
 ## Running
-
-------
 
 You can implement out model according to the following steps:
 
@@ -30,8 +26,6 @@ You can implement out model according to the following steps:
 
 ## Requirements
 
-------
-
 To ease the configuration of the environment, I list versions of my hardware and software equipments:
 
 - Hardware:
@@ -45,3 +39,16 @@ To ease the configuration of the environment, I list versions of my hardware and
   - deepspeed: 0.9.4
 
 You can also visit this [link](https://drive.google.com/file/d/1pqRZUa8HB02qxcwGU1TzZqUipAYzpFLm/view?usp=sharing) to get the tar.gz file containing the complete virtual environment.
+
+
+
+## Ablation experiment supplement
+
+| Method     | CMeIE  | CHIP-CDN | CHIP-CDEE | CHIP-MDCFNPC | CHIP-CTC | KUAKE-QIC | IMCS-V2-MRG | MedDG  | Average |
+| ---------- | ------ | -------- | --------- | ------------ | -------- | --------- | ----------- | ------ | ------- |
+| DRMOE      | 0.4675 | 0.8247   | 0.5622    | 0.7813       | 0.8927   | 0.8597    | 0.3771      | 0.1126 | 0.6097  |
+| w/o TSL&DR | 0.4497 | 0.8229   | 0.5545    | 0.7810       | 0.8645   | 0.8563    | 0.3608      | 0.1093 | 0.5999  |
+| w/o TSL    | 0.4784 | 0.8355   | 0.5668    | 0.7729       | 0.8836   | 0.8021    | 0.3630      | 0.1135 | 0.6020  |
+| w/o DR     | 0.4655 | 0.8168   | 0.5685    | 0.7736       | 0.8864   | 0.8587    | 0.3805      | 0.1138 | 0.6080  |
+
+These additional ablation experiments further demonstrate the effectiveness of the proposed module in our study.
