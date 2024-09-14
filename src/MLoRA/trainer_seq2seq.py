@@ -183,7 +183,7 @@ class Seq2SeqTrainer(Trainer):
         gen_kwargs["num_beams"] = (
             gen_kwargs["num_beams"] if gen_kwargs.get("num_beams") is not None else self.model.config.num_beams
         )
-        default_synced_gpus = True if is_deepspeed_zero3_enabled() else False     #lhy_comment
+        default_synced_gpus = True if is_deepspeed_zero3_enabled() else False
         gen_kwargs["synced_gpus"] = (
             gen_kwargs["synced_gpus"] if gen_kwargs.get("synced_gpus") is not None else default_synced_gpus
         )

@@ -24,7 +24,7 @@ class chatglm1_train(object):
         self.department = department
 
         # 加载预训练的BERT模型和分词器
-        self.bert_model_name = '/root/lhy/model/bert-base-chinese'
+        self.bert_model_name = 'google-bert/bert-base-chinese'  #google-bert/bert-base-chinese from hugging face
         self.bert_tokenizer = BertTokenizer.from_pretrained(self.bert_model_name)
         self.bert_model = BertModel.from_pretrained(self.bert_model_name).to("cuda")
 
@@ -58,7 +58,7 @@ class chatglm1_train(object):
                     prompt += "[Round {}]\n问：{}\n答：".format(len(history), query)
 
                 prompt = self.prefix + prompt
-                #lhy_add bert_prompt_representation
+
                 bert_prompt = prompt if len(prompt) < 510 else prompt[:510]
                 bert_inputs = self.bert_tokenizer(bert_prompt, return_tensors='pt', truncation=True, padding=True)
                 bert_inputs = {k: v.to("cuda") for k, v in bert_inputs.items()}     # 将输入张量移到 GPU
@@ -79,11 +79,6 @@ class chatglm1_train(object):
 
                 input_ids = self.tokenizer.build_inputs_with_special_tokens(a_ids, b_ids)
                 input_ids.append(self.tokenizer.eos_token_id)   #lhy_add
-                # if self.model_args.model_name_or_path != "resources/chatglmv2":
-                #     # context_length = input_ids.index(self.tokenizer.bos_token_id)
-                #     context_length = input_ids.index(self.tokenizer.sep_token_id)
-                # else:
-                #     context_length = len(a_ids) ### For ChatGLMv2
 
                 context_length = len(a_ids) #bloom
 
@@ -103,8 +98,6 @@ class chatglm1_train(object):
                 if self.task:
                     task_id = task_dict[examples['task_dataset'][i]]
                     model_inputs["task_id"].append(task_id)
-                    #lhy_modify bert_representation
-                    # task_id = bert_cls_embedding[0].tolist()
                     sent_rep = bert_cls_embedding[0].tolist()
                     model_inputs["sent_rep"].append(sent_rep)
 
@@ -166,11 +159,6 @@ class chatglm1_eval(object):
                 inputs.append(prompt)
 
             if self.task:
-                #lhy_add bert_prompt_representation
-                # bert_inputs = self.bert_tokenizer(prompt, return_tensors='pt', truncation=True, padding=True)
-                # with torch.no_grad():
-                #     bert_outputs = self.bert_model(**bert_inputs)
-                # bert_cls_embedding = bert_outputs.last_hidden_state[:, 0, :]
                 bert_prompt = prompt if len(prompt) < 510 else prompt[:510]
                 bert_inputs = self.bert_tokenizer(bert_prompt, return_tensors='pt', truncation=True, padding=True)
                 bert_inputs = {k: v.to("cuda") for k, v in bert_inputs.items()}     # 将输入张量移到 GPU
@@ -201,6 +189,6 @@ class chatglm1_eval(object):
         if self.sent:
             model_inputs["sent_rep"] = sent_rep
 
-        return model_inputs     #将问句tokenizer后进行padding
+        return model_inputs
         
 

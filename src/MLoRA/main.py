@@ -68,14 +68,13 @@ def seed_torch(seed=42):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed) # if you are using multi-GPU.
+    torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
     set_seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed) # 为了禁止hash随机化，使得实验可复现
+    os.environ['PYTHONHASHSEED'] = str(seed)
     
 
-# def main(model_args, data_args, training_args):
 def main(parser):
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):  #原始
         model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
@@ -87,12 +86,9 @@ def main(parser):
         model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[2]))
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
-    # deepspeed启动
-    # model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[4]))
     accelerator = Accelerator()
     training_args.batched_training = data_args.batched_training # for batched training
-    # if model_args.department:   # for the department
-    #     model_args.task_num = model_args.depart_num
+
     # Setup logging
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -106,7 +102,7 @@ def main(parser):
 
     log_level = training_args.get_process_log_level()
     logger.setLevel(log_level)
-    # datasets.utils.logging.set_verbosity(log_level)
+
     transformers.utils.logging.set_verbosity(log_level)
     transformers.utils.logging.enable_default_handler()
     transformers.utils.logging.enable_explicit_format()
@@ -137,12 +133,10 @@ def main(parser):
     raw_datasets = load_dataset(
         "json",
         data_files=data_files,
-        # split="train[:32]",  #lhy debug train只取32个样本
         cache_dir=model_args.cache_dir,
         use_auth_token=True if model_args.use_auth_token else None,
     )
     print("raw_datasets: ", raw_datasets)
-    # print("raw_datasets: ", len(raw_datasets["train"]))
 
     # Load pretrained model and tokenizer
     config = AutoConfig.from_pretrained(
@@ -165,11 +159,8 @@ def main(parser):
     model = BloomForCausalLM.from_pretrained(
         model_args.model_name_or_path,
         trust_remote_code=True,
-        # empty_init=False
-    # ).half()
     ).half().cuda() 
-    # ).half().to(training_args.device)   #分布式训练DDP
-    #try to use enable_input_require_grads before get_peft_model for solving the problem about loss with grad
+
     if training_args.do_train:
         model.gradient_checkpointing_enable()
         model.enable_input_require_grads()
@@ -214,40 +205,15 @@ def main(parser):
             r=lora_rank, lora_alpha=lora_alpha,
             lora_dropout=lora_dropout,
             modules_to_save=modules_to_save,
-            **kwargs    #moelora的任务数量，dim以及专家数量
+            **kwargs
         )
         model = get_peft_model(model, peft_config)
-
-    # 确保模型完全在GPU上  分布式DDP
-    # model.to(training_args.device)
-    
-    # if torch.cuda.device_count() > 1:
-    #     model = torch.nn.DataParallel(model)
-    
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # model.to(device)
-
     
     model.to(accelerator.device)
     training_args.dataloader_num_workers = accelerator.num_processes
-
     model.print_trainable_parameters()
-    # if training_args.do_train:
-    #     model.gradient_checkpointing_enable()
-    #     model.enable_input_require_grads()
+    training_args.ddp_find_unused_parameters = False
 
-    training_args.ddp_find_unused_parameters = False    #accelerate能够解决参数mark only once的关键
-    # training_args.ddp_find_unused_parameters = True
-    # DDP分布式训练设置
-    # if training_args.local_rank != -1:
-    #     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[training_args.local_rank], output_device=training_args.local_rank, find_unused_parameters=False)
-
-    #DP分布式推理
-    # device_ids = [0, 1, 2, 3]
-    # model = model.to(device_ids[0])
-    # if torch.cuda.device_count() > 1:
-    #     model = torch.nn.DataParallel(model, device_ids=device_ids)
-    # model.to("cuda")
     task_flag = False   # flag whether generate task_id from dataset
     depart_flag = False  # flag whether use the department and entity
     if (model_args.lora_name == "moelora"):
@@ -260,13 +226,11 @@ def main(parser):
     # We need to tokenize inputs and targets.
     if training_args.do_train:
         column_names = raw_datasets["train"].column_names
-        # column_names = raw_datasets.column_names    #lhy train debug
 
     elif training_args.do_eval:
         column_names = raw_datasets["validation"].column_names 
     elif training_args.do_predict:
         column_names = raw_datasets["test"].column_names
-        # column_names = raw_datasets.column_names      #lhy predict debug
     else:
         logger.info("There is nothing to do. Please pass `do_train`, `do_eval` and/or `do_predict`.")
         return
@@ -283,25 +247,6 @@ def main(parser):
         print("input_ids: ",example["input_ids"])
         print("inputs: ", tokenizer.decode(example["input_ids"]))
         print("label_ids: ", example["labels"])
-        #print("labels: ", tokenizer.decode(example["labels"])) # For ChatGLMv2
-    
-    # if model_args.model_name_or_path.split("/")[-1] == "chatglm-6b":
-    #     preprocess_function_train = chatglm1_train(data_args, model_args, prompt_column,
-    #                                                response_column, history_column, prefix,
-    #                                                tokenizer, task_flag, depart_flag)
-    #     preprocess_function_eval = chatglm1_eval(data_args, model_args, prompt_column,
-    #                                              response_column, history_column, prefix,
-    #                                              tokenizer, task_flag, depart_flag)
-    # elif model_args.model_name_or_path.split("/")[-1] == "chatglmv2":
-    #     preprocess_function_train = chatglm2_train(data_args, model_args, prompt_column,
-    #                                                response_column, history_column, prefix,
-    #                                                tokenizer, task_flag, model_args.department)
-    #     preprocess_function_eval = chatglm2_eval(data_args, model_args, prompt_column,
-    #                                              response_column, history_column, prefix,
-    #                                              tokenizer, task_flag, model_args.department)
-    # else:
-    #     raise ValueError("No such Foundation Model")
-
 
     preprocess_function_train = chatglm1_train(data_args, model_args, prompt_column,
                                             response_column, history_column, prefix,
@@ -312,28 +257,21 @@ def main(parser):
 
 
     if training_args.do_train:
-        # if "train" not in raw_datasets:
-        #     raise ValueError("--do_train requires a train dataset")
         train_dataset = raw_datasets["train"]
-        # train_dataset = raw_datasets    #lhy debug
         if data_args.max_train_samples is not None:
             max_train_samples = min(len(train_dataset), data_args.max_train_samples)
             train_dataset = train_dataset.select(range(max_train_samples))
         with training_args.main_process_first(desc="train dataset map pre-processing"):
-            # train_dataset = train_dataset.map(
-            #     preprocess_function_train,
-            #     batched=True,
-            #     num_proc=data_args.preprocessing_num_workers,
-            #     remove_columns=column_names,
-            #     load_from_cache_file=False,
-            #     desc="Running tokenizer on train dataset",
-            # )
-            # with open('/root/lhy/MOELoRA-peft/datasets/processed_train_dataset.pkl', 'wb') as f:
-            #     pickle.dump(train_dataset, f)
-            with open('datasets/processed_train_dataset.pkl', 'rb') as f:
-                train_dataset = pickle.load(f)
-        print_dataset_example(train_dataset[0])
-        print_dataset_example(train_dataset[1])
+            train_dataset = train_dataset.map(
+                preprocess_function_train,
+                batched=True,
+                num_proc=data_args.preprocessing_num_workers,
+                remove_columns=column_names,
+                load_from_cache_file=False,
+                desc="Running tokenizer on train dataset",
+            )
+            print_dataset_example(train_dataset[0])
+            print_dataset_example(train_dataset[1])
         train_dataset.set_format("torch")
 
     if training_args.do_eval:
@@ -345,60 +283,40 @@ def main(parser):
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))
         with training_args.main_process_first(desc="validation dataset map pre-processing"):
-            # eval_dataset = eval_dataset.map(
-            #     preprocess_function_eval,
-            #     batched=True,
-            #     num_proc=data_args.preprocessing_num_workers,
-            #     remove_columns=column_names,
-            #     load_from_cache_file=False,
-            #     desc="Running tokenizer on validation dataset",
-            # )
-            # with open('/root/lhy/MOELoRA-peft/datasets/processed_test_dataset.pkl', 'wb') as f:
-            #     pickle.dump(eval_dataset, f)
-            with open('datasets/processed_test_dataset.pkl', 'rb') as f:
-                eval_dataset = pickle.load(f)
-        print_dataset_example(eval_dataset[0])
-        print_dataset_example(eval_dataset[1])
+            eval_dataset = eval_dataset.map(
+                preprocess_function_eval,
+                batched=True,
+                num_proc=data_args.preprocessing_num_workers,
+                remove_columns=column_names,
+                load_from_cache_file=False,
+                desc="Running tokenizer on validation dataset",
+            )
+            print_dataset_example(eval_dataset[0])
+            print_dataset_example(eval_dataset[1])
         eval_dataset.set_format("torch")
 
     if training_args.do_predict:
         max_target_length = data_args.val_max_target_length
-        # if "test" not in raw_datasets:
-        #     raise ValueError("--do_predict requires a test dataset")
         predict_dataset = raw_datasets["test"]
-        # predict_dataset = raw_datasets    #lhy_debug
         if data_args.max_predict_samples is not None:
             max_predict_samples = min(len(predict_dataset), data_args.max_predict_samples)
             predict_dataset = predict_dataset.select(range(max_predict_samples))
-        # with training_args.main_process_first(desc="prediction dataset map pre-processing"):
-        #     predict_dataset = predict_dataset.map(
-        #         preprocess_function_eval,
-        #         batched=True,
-        #         num_proc=data_args.preprocessing_num_workers,
-        #         remove_columns=column_names,
-        #         load_from_cache_file=False,
-        #         desc="Running tokenizer on prediction dataset",
-        #     )
-        # with open('/root/lhy/MOELoRA-peft/datasets/processed_predict_dataset.pkl', 'wb') as f:
-        #     pickle.dump(predict_dataset, f)
-        with open('/root/lhy/MOELoRA-peft/datasets/processed_predict_dataset.pkl', 'rb') as f:
-            predict_dataset = pickle.load(f)
-        print_dataset_example(predict_dataset[0])
-        print_dataset_example(predict_dataset[1])
+        with training_args.main_process_first(desc="prediction dataset map pre-processing"):
+            predict_dataset = predict_dataset.map(
+                preprocess_function_eval,
+                batched=True,
+                num_proc=data_args.preprocessing_num_workers,
+                remove_columns=column_names,
+                load_from_cache_file=False,
+                desc="Running tokenizer on prediction dataset",
+            )
+            print_dataset_example(predict_dataset[0])
+            print_dataset_example(predict_dataset[1])
         predict_dataset.set_format("torch")
 
     # Data collator
     label_pad_token_id = -100 if data_args.ignore_pad_token_for_loss else tokenizer.pad_token_id
     
-    # if training_args.do_train:  # only conduct padding for do_train
-    #     data_collator = DataCollatorForSeq2Seq(
-    #         tokenizer,
-    #         model=model,
-    #         label_pad_token_id=label_pad_token_id,
-    #         pad_to_multiple_of=tokenizer.pad_token_id,
-    #         padding="longest",
-    #     )
-    # else:
     if training_args.do_train:
         data_collator = LongestSequenceCollator(tokenizer, task_flag, depart_flag, True)
     else:
@@ -426,16 +344,13 @@ def main(parser):
             labels = [label.strip() for label in labels]
 
             list_test_samples = []
-            tp = "/root/lhy/MOELoRA-peft/datasets/test.json"
+            tp = "datasets/test.json"
             with open(tp, "r", encoding="utf-8") as f:
                 for line in f:
                     line = json.loads(line)
                     list_test_samples.append(line)
-            # 检查解码后预测结果和标签的长度是否匹配
-            assert len(labels) == len(list_test_samples)
 
-            # 存储预测结果到json文件中
-            # output_prediction_file = os.path.join(training_args.output_dir, f"test_predictions_epoch_{epoch}.json")
+            assert len(labels) == len(list_test_samples)
             pp = os.path.join("results/pred", f"test_predictions.json")
             
             with open(pp, "w", encoding="utf-8") as writer:
@@ -476,8 +391,6 @@ def main(parser):
         checkpoint = None
         if training_args.resume_from_checkpoint is not None:
             checkpoint = training_args.resume_from_checkpoint
-        # model.gradient_checkpointing_enable()
-        # model.enable_input_require_grads()
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
 
         metrics = train_result.metrics
@@ -492,19 +405,9 @@ def main(parser):
 
     # Evaluation
     results = {}
-    # if training_args.do_eval:
-    #     logger.info("*** Evaluate ***")
-    #     metrics = trainer.evaluate(metric_key_prefix="eval", do_sample=True, top_p=0.7, max_length=512, temperature=0.95)
-    #     max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
-    #     metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
-
-    #     trainer.log_metrics("eval", metrics)
-    #     trainer.save_metrics("eval", metrics)
-
     if training_args.do_predict:
         logger.info("*** Predict ***")
 
-        # 读取原test file
         list_test_samples = []
         with open(data_args.test_file, "r", encoding="utf-8") as f:
             for line in f:
@@ -514,12 +417,10 @@ def main(parser):
         predict_results = trainer.predict(
             predict_dataset,
             metric_key_prefix="predict",
-            # max_tokens=512,
             max_new_tokens=data_args.max_target_length,
             do_sample=True,
             top_p=0.7,
             temperature=0.95,
-            # repetition_penalty=1.1
         )
         metrics = predict_results.metrics
         print(metrics)
@@ -528,16 +429,12 @@ def main(parser):
         )
         metrics["predict_samples"] = min(max_predict_samples, len(predict_dataset))
 
-        #trainer.log_metrics("predict", metrics)
-        #trainer.save_metrics("predict", metrics)
-
         if trainer.is_world_process_zero():
             if training_args.predict_with_generate:
                 predictions = tokenizer.batch_decode(
                     predict_results.predictions, skip_special_tokens=True, clean_up_tokenization_spaces=True
                 )
                 predictions = [pred.strip() for pred in predictions]
-                #lhy modify from -100 to pad_token_id
                 predict_results.label_ids[predict_results.label_ids == -100] = tokenizer.pad_token_id
                 labels = tokenizer.batch_decode(
                     predict_results.label_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True

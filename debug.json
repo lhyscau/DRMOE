@@ -1,5 +1,4 @@
 {
-    "resume_from_checkpoint": true,
     "do_train": true,
     "do_eval": true,
     "validation_file": "datasets/test.json",
@@ -39,5 +38,5 @@
         "temperature": 0.95,
         "num_beams": 1
     },
-    "eval_delay": 5
+    "eval_delay": 0
 }
